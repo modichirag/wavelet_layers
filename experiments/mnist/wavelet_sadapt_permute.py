@@ -23,10 +23,10 @@ import optax
 # Local imports
 sys.path.append('../../src/')
 from dequant import Dequantization, VariationalDequantization
-from layers import CouplingLayer, WaveletLayer_sadapt, InvertibleLinear, ActNorm
+from layers import CouplingLayer, WaveletLayer_sadapt_permute, InvertibleLinear, ActNorm
 from cnn import GatedConvNet
 from flow import ImageFlow
-from utils import create_channel_mask, create_checkerboard_mask
+from utils import create_channel_mask, create_checkerboard_mask, softplus, get_permutations
 
 sys.path.append('../')
 from trainer import TrainerModule
@@ -49,6 +49,7 @@ nchannels = 1
 n_vardeq_layers = 4
 n_flow_layers = 12
 c_hidden = int(4*6*nchannels)
+renorm = jnp.exp
 L = 5
 use_vardeq = True
 
@@ -60,7 +61,7 @@ if debug:
     
 
 num_epochs = 2000
-model_name = 'wavelet_sadaptL5_l12_v2_nopermute'
+model_name = 'wavelet_sadaptL5_l12_v2'
 ckpt_path = f'/mnt/ceph/users/cmodi/wavelet_layers/mnist/{model_name}/ckpt/'
 
 def create_wavelet_flow(use_vardeq=True, seed_init=99):
@@ -77,10 +78,12 @@ def create_wavelet_flow(use_vardeq=True, seed_init=99):
     #main flow
     for i in range(n_flow_layers):
         key_init, key_perm = random.split(key_init)
+        permutations = get_permutations(n=3, L=L, rng=key_perm)
+        print([p[0] for p in permutations])
 
         flow_layers += [ActNorm()]
         #flow_layers += [InvertibleLinear(input_dim=nchannels, key=key_init)]
-        flow_layers += [WaveletLayer_sadapt(D=D, L=L,
+        flow_layers += [WaveletLayer_sadapt_permute(D=D, L=L, permutations=permutations,
                                             nchannels=nchannels, c_hidden=c_hidden, key=key_init)]
         flow_layers += [CouplingLayer(network=GatedConvNet(c_out=2*nchannels, c_hidden=2*nchannels),
                                       mask=create_checkerboard_mask(h=D, w=D, invert=False),
