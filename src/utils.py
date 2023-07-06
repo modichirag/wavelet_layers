@@ -1,7 +1,19 @@
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import lax
 
+def get_permutations(n, L, rng):
+    perms = []
+    key = rng
+    for i in range(L):
+        key, key_use = jax.random.split(key, 2)
+        p = jax.random.permutation(key_use, n)
+        s = np.empty_like(p)
+        s[p] = jnp.arange(p.size)
+        perms.append([p, s])
+    return perms
+    
 def create_checkerboard_mask(h, w, invert=False):
     x, y = jnp.arange(h, dtype=jnp.int32), jnp.arange(w, dtype=jnp.int32)
     xx, yy = jnp.meshgrid(x, y, indexing='ij')

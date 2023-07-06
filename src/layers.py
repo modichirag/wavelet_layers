@@ -249,136 +249,6 @@ class WaveletLayer(nn.Module):
 
 
 
-# class WaveletLayer_sadapt(nn.Module):
-    
-#     D : int
-#     L : int         # number of levels 
-#     key : Any       # rng key
-#     c_hidden : int  # NN to use in the flow for predicting mu and sigma
-#     nchannels : int = 1
-#     renorm : callable = jnp.exp
-#     s_flow : nn.Module = None
-    
-#     def setup(self):
-#         '''Setup conv-net for every level
-#         '''
-#         self.networks = [GatedConvNet(c_hidden=self.c_hidden, c_out=6*self.nchannels, num_layers=2)  for _ in range(self.L)]
-#         if self.s_flow is None:
-#             self.s_flow = InvertibleLinear(int((self.D/2**self.L)**2*self.nchannels), key=self.key)
-#         assert self.L == len(self.networks)
-#         self.scaling_factor = self.param('scaling_factor',
-#                                          nn.initializers.zeros,
-#                                          (3*self.nchannels))
-    
-#     def _forward(self, x):
-#         details = []
-#         logdetjac = 0
-#         s = x*1.
-#         for nl in range(self.L):
-#             s, d = haar_decompose_2D(s)
-#             details.append(d)
-#         details = details[::-1]
-
-#         #adapt s
-#         #s_flat = jnp.reshape(s, (s.shape[0], np.prod(s.shape[1:])))
-#         #s_flat, lj_layer = self.s_flow(s_flat)
-#         #s = jnp.reshape(s_flat, s.shape)
-#         s, lj_layer = self.s_flow(s)
-#         logdetjac += lj_layer
-        
-#         for i, detail in enumerate(details):
-#             wb = self.networks[i](s)
-#             #wh, wv, wd = jnp.split(self.renorm(wb[..., :3*self.nchannels]), 3, axis=-1)
-#             #bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-#             #logdetjac += jnp.sum(jnp.log(self.renorm(wb[..., :3*self.nchannels])), axis=[1, 2, 3])
-#             wh, wv, wd = jnp.split(wb[..., :3*self.nchannels], 3, axis=-1)
-#             bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-#             # Stabilize scaling output
-#             sfac = jnp.exp(self.scaling_factor).reshape(1, 1, 1, -1)
-#             sh, sv, sd = jnp.split(sfac, 3, axis=-1)
-#             wh = nn.tanh(wh / sh) * sh
-#             wv = nn.tanh(wv / sv) * sv
-#             wd = nn.tanh(wd / sd) * sd
-#             logdetjac += jnp.sum(jnp.abs(wh), axis=[1, 2, 3]) + \
-#                 jnp.sum(jnp.abs(wv), axis=[1, 2, 3]) + \
-#                 jnp.sum(jnp.abs(wd), axis=[1, 2, 3])
-#             #
-#             h, v, d = detail
-#             h = h*jnp.exp(wh) + bh
-#             v = v*jnp.exp(wv) + bv
-#             d = d*jnp.exp(wd) + bd
-#             detail = [h, v, d]
-#             s = haar_recompose_2D(s, detail)
-
-#         return s, logdetjac
-
-    
-#     def _reverse(self, x):            
-#         details = []
-#         logdetjac = 0.
-#         s = x*1.
-    
-#         for i in range(self.L):
-#             s, detail = haar_decompose_2D(s)
-#             wb = self.networks[::-1][i](s)
-#             #wh, wv, wd = jnp.split(self.renorm(wb[..., :3*self.nchannels]), 3, axis=-1)
-#             #bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-#             #logdetjac += jnp.sum(jnp.log(self.renorm(wb[..., :3*self.nchannels])), axis=[1, 2, 3])
-#             wh, wv, wd = jnp.split(wb[..., :3*self.nchannels], 3, axis=-1)
-#             bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-#             # Stabilize scaling output
-#             sfac = jnp.exp(self.scaling_factor).reshape(1, 1, 1, -1)
-#             sh, sv, sd = jnp.split(sfac, 3, axis=-1)
-#             wh = nn.tanh(wh / sh) * sh
-#             wv = nn.tanh(wv / sv) * sv
-#             wd = nn.tanh(wd / sd) * sd
-#             logdetjac += jnp.sum(jnp.abs(wh), axis=[1, 2, 3]) + \
-#                 jnp.sum(jnp.abs(wv), axis=[1, 2, 3]) + \
-#                 jnp.sum(jnp.abs(wd), axis=[1, 2, 3])
-#             h, v, d = detail
-#             h = (h-bh) * jnp.exp(-wh)
-#             v = (v-bv) * jnp.exp(-wv)
-#             d = (d-bd) * jnp.exp(-wd)
-#             detail = [h, v, d]
-#             details.append(detail)
-#         details = details[::-1]
-
-#         #adapt s reversed
-#         s_flat = jnp.reshape(s, (s.shape[0], np.prod(s.shape[1:])))
-#         s_flat, lj_layer = self.s_flow(s_flat, reverse=True)
-#         s = jnp.reshape(s_flat, s.shape)
-#         logdetjac -= lj_layer  #because it is already negated in s_flow
-        
-#         for i, d in enumerate(details):
-#             s = haar_recompose_2D(s, d)
-#         return s, logdetjac
-
-
-#     def __call__(self, z, ldj, rng, reverse=False, orig_img=None):
-#         """
-#         Inputs:
-#             z - Latent input to the flow
-#             ldj - The current ldj of the previous flows.
-#                   The ldj of this layer will be added to this tensor.
-#             rng - PRNG state
-#             reverse - If True, we apply the inverse of the layer.
-#             orig_img (optional) - Only needed in VarDeq. Allows external
-#                                   input to condition the flow on (e.g. original image)
-#         """
-#         # Affine transformation
-#         if  not reverse:
-#             z, ldj_layer = self._forward(z)
-#             ldj += ldj_layer
-#         else:
-#             z, ldj_layer = self._reverse(z)
-#             ldj -= ldj_layer
-
-#         return z, ldj, rng
-    
-
-
-
-
 class WaveletLayer_sadapt(nn.Module):
     
     D : int
@@ -386,7 +256,6 @@ class WaveletLayer_sadapt(nn.Module):
     key : Any       # rng key
     c_hidden : int  # NN to use in the flow for predicting mu and sigma
     nchannels : int = 1
-    renorm : callable = jnp.exp
 
     
     def setup(self):
@@ -397,7 +266,7 @@ class WaveletLayer_sadapt(nn.Module):
         assert self.L == len(self.networks)
         self.scaling_factor = self.param('scaling_factor',
                                          nn.initializers.zeros,
-                                         (3*self.nchannels))
+                                         (self.L, 3, self.nchannels))
     
     def _forward(self, x):
         details = []
@@ -416,20 +285,17 @@ class WaveletLayer_sadapt(nn.Module):
 
         for i, detail in enumerate(details):
             wb = self.networks[i](s)
-            #wh, wv, wd = jnp.split(self.renorm(wb[..., :3*self.nchannels]), 3, axis=-1)
-            #bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-            #logdetjac += jnp.sum(jnp.log(self.renorm(wb[..., :3*self.nchannels])), axis=[1, 2, 3])
             wh, wv, wd = jnp.split(wb[..., :3*self.nchannels], 3, axis=-1)
             bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
             # Stabilize scaling output
-            sfac = jnp.exp(self.scaling_factor).reshape(1, 1, 1, -1)
-            sh, sv, sd = jnp.split(sfac, 3, axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i]).reshape(1, 1, 3, self.nchannels)
+            sh, sv, sd = jnp.split(sfac, 3, axis=-2)
             wh = nn.tanh(wh / sh) * sh
             wv = nn.tanh(wv / sv) * sv
             wd = nn.tanh(wd / sd) * sd
-            logdetjac += jnp.sum((wh), axis=[1, 2, 3]) + \
-                jnp.sum((wv), axis=[1, 2, 3]) + \
-                jnp.sum((wd), axis=[1, 2, 3])
+            logdetjac += jnp.sum(wh, axis=[1, 2, 3]) + \
+                jnp.sum(wv, axis=[1, 2, 3]) + \
+                jnp.sum(wd, axis=[1, 2, 3])
             #
             h, v, d = detail
             h = h*jnp.exp(wh) + bh
@@ -449,20 +315,17 @@ class WaveletLayer_sadapt(nn.Module):
         for i in range(self.L):
             s, detail = haar_decompose_2D(s)
             wb = self.networks[::-1][i](s)
-            #wh, wv, wd = jnp.split(self.renorm(wb[..., :3*self.nchannels]), 3, axis=-1)
-            #bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
-            #logdetjac += jnp.sum(jnp.log(self.renorm(wb[..., :3*self.nchannels])), axis=[1, 2, 3])
             wh, wv, wd = jnp.split(wb[..., :3*self.nchannels], 3, axis=-1)
             bh, bv, bd = jnp.split(wb[..., 3*self.nchannels:], 3, axis=-1)
             # Stabilize scaling output
-            sfac = jnp.exp(self.scaling_factor).reshape(1, 1, 1, -1)
-            sh, sv, sd = jnp.split(sfac, 3, axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i]).reshape(1, 1, 3, self.nchannels)
+            sh, sv, sd = jnp.split(sfac, 3, axis=-2)
             wh = nn.tanh(wh / sh) * sh
             wv = nn.tanh(wv / sv) * sv
             wd = nn.tanh(wd / sd) * sd
-            logdetjac += jnp.sum((wh), axis=[1, 2, 3]) + \
-                jnp.sum((wv), axis=[1, 2, 3]) + \
-                jnp.sum((wd), axis=[1, 2, 3])
+            logdetjac += jnp.sum(wh, axis=[1, 2, 3]) + \
+                jnp.sum(wv, axis=[1, 2, 3]) + \
+                jnp.sum(wd, axis=[1, 2, 3])
             h, v, d = detail
             h = (h-bh) * jnp.exp(-wh)
             v = (v-bv) * jnp.exp(-wv)
@@ -492,6 +355,155 @@ class WaveletLayer_sadapt(nn.Module):
             reverse - If True, we apply the inverse of the layer.
             orig_img (optional) - Only needed in VarDeq. Allows external
                                   input to condition the flow on (e.g. original image)
+        """
+        # Affine transformation
+        if  not reverse:
+            z, ldj_layer = self._forward(z)
+            ldj += ldj_layer
+        else:
+            z, ldj_layer = self._reverse(z)
+            ldj -= ldj_layer
+
+        return z, ldj, rng
+    
+    
+class WaveletLayer_sadapt_permute(nn.Module):
+    
+    D : int
+    L : int         # number of levels 
+    permutations : list 
+    key : Any       # rng key
+    c_hidden : int  # NN to use in the flow for predicting mu and sigma
+    nchannels : int = 1
+
+
+    def setup(self):
+        '''Setup conv-net for every level
+        '''
+        self.networks = [[GatedConvNet(c_hidden=self.c_hidden, c_out=2*self.nchannels, num_layers=1) for _ in range(3)] for _ in range(self.L)]
+        self.s_flow = InvertibleLinear(int((self.D/2**self.L)**2*self.nchannels), key=self.key)
+        assert self.L == len(self.networks)
+        self.scaling_factor = self.param('scaling_factor',
+                                         nn.initializers.zeros,
+                                         (self.L, 3, self.nchannels))
+        
+        
+    def _forward(self, x):
+        details = []
+        logdetjac = 0
+        s = x*1.
+        for nl in range(self.L):
+            s, d = haar_decompose_2D(s)
+            details.append(d)
+        details = details[::-1]
+                
+        networks = self.networks
+        permutations = self.permutations
+
+        #adapt s
+        s_flat = jnp.reshape(s, (s.shape[0], np.prod(s.shape[1:])))
+        s_flat, lj_layer = self.s_flow(s_flat)
+        s = jnp.reshape(s_flat, s.shape)
+        logdetjac += lj_layer
+
+        for i, detail in enumerate(details):
+            #h, v, d = [detail[p] for p in permutations[i][0]]
+            tmp = jnp.stack(detail, axis=-1)
+            h = jnp.take(tmp, permutations[i][0][0], -1)
+            v = jnp.take(tmp, permutations[i][0][1], -1)
+            d = jnp.take(tmp, permutations[i][0][2], -1)
+
+            xinp = s*1.
+            sfac = jnp.exp(self.scaling_factor[i, 0]).reshape(1, 1, 1, -1)
+            wb = networks[i][0](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            h = h*jnp.exp(w) + b
+            
+            #
+            xinp = jnp.concatenate([s, h], axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i, 1]).reshape(1, 1, 1, -1)
+            wb = networks[i][1](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            v = v*jnp.exp(w) + b
+            
+            #
+            xinp = jnp.concatenate([s, h, v], axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i, 2]).reshape(1, 1, 1, -1)
+            wb = networks[i][2](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            d = d*jnp.exp(w) + b
+            
+            detail = [h, v, d]
+            detail = [detail[p] for p in permutations[i][1]]
+            s = haar_recompose_2D(s, detail)
+            
+        return s, logdetjac
+
+    
+    def _reverse(self, x):            
+        details = []
+        permutations = self.permutations[::-1]
+        networks = self.networks[::-1]        
+        logdetjac = 0.
+        s = x*1.
+        
+        for i in range(self.L):
+            s, detail = haar_decompose_2D(s)
+            # h, v, d = detail
+            #h, v, d = [detail[p] for p in permutations[i][0]]
+            tmp = jnp.stack(detail, axis=-1)
+            h = jnp.take(tmp, permutations[i][0][0], -1)
+            v = jnp.take(tmp, permutations[i][0][1], -1)
+            d = jnp.take(tmp, permutations[i][0][2], -1)
+
+            xinp = jnp.concatenate([s, h, v], axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i, 2]).reshape(1, 1, 1, -1)
+            wb = networks[i][2](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            d = (d - b)*jnp.exp(-w)
+
+            xinp = jnp.concatenate([s, h], axis=-1)
+            sfac = jnp.exp(self.scaling_factor[i, 1]).reshape(1, 1, 1, -1)
+            wb = networks[i][1](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            v = (v - b)*jnp.exp(-w)
+
+            xinp = s*1.
+            sfac = jnp.exp(self.scaling_factor[i, 0]).reshape(1, 1, 1, -1)
+            wb = networks[i][0](xinp)           
+            w, b =  jnp.split(wb, 2, axis=-1)
+            w = nn.tanh(w / sfac) * sfac
+            logdetjac += jnp.sum(w, axis=[1, 2, 3])
+            h = (h - b)*jnp.exp(-w)
+            
+            detail = [h, v, d]
+            detail = [detail[p] for p in permutations[i][1]]
+            details.append(detail)
+        details = details[::-1]
+
+        #adapt s reversed
+        s_flat = jnp.reshape(s, (s.shape[0], np.prod(s.shape[1:])))
+        s_flat, lj_layer = self.s_flow(s_flat, reverse=True)
+        s = jnp.reshape(s_flat, s.shape)
+        logdetjac -= lj_layer  #because it is already negated in s_flow
+        
+        for i, d in enumerate(details):
+            s = haar_recompose_2D(s, d)
+        return s, logdetjac
+
+
+    def __call__(self, z, ldj, rng, reverse=False, orig_img=None):
+        """
         """
         # Affine transformation
         if  not reverse:
