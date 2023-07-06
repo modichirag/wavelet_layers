@@ -69,7 +69,7 @@ class Quijote2d_dataloader():
         self.test_set = None
 
         # Actual data loaders for training, validation, and testing
-        self.train_data_loader = DataLoader(self.train_set,
+        self.train_loader = DataLoader(self.train_set,
                                             batch_size=self.train_batch,
                                             shuffle=True,
                                             drop_last=True,

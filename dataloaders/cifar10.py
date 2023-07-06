@@ -12,7 +12,7 @@ from torchvision.datasets import CIFAR10
 # Note that we keep them in the range 0-255 (integers)
 def image_to_numpy(img):
     img = np.array(img, dtype=np.int32)
-    img = img[...,None]
+    #img = img[...,None]
     return img
 
 # We need to stack the batch elements
@@ -41,7 +41,7 @@ class CIFAR10_dataloader():
         
         # Loading the training dataset. We need to split it into a training and validation part
         train_dataset = CIFAR10(root=self.DATASET_PATH, train=True, transform=image_to_numpy, download=True)
-        self.train_size = train_dataset.data.size()[0]
+        self.train_size = train_dataset.data.shape[0]
         self.train_set, self.val_set = torch.utils.data.random_split(train_dataset,
                                                            [int(self.train_frac * self.train_size),  self.train_size-int(self.train_frac * self.train_size)],
                                                            generator=torch.Generator().manual_seed(42))
