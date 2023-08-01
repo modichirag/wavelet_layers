@@ -38,6 +38,7 @@ def create_channel_mask(c_in, invert=False):
         
 def haar_decompose_2D(x):
     '''One step application of haar wavelets (x_l -> s_(l+1), d_(l+1))
+    https://www-users.cse.umn.edu/~jwcalder/5467/lec_dwt.pdf
     '''
 
     batch = x.shape[0]
